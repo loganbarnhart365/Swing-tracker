@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#101813">
+<title>Swing Tracker</title>
+<style>
+:root{color-scheme:dark;--bg:#101813;--panel:#1b2820;--muted:#a9b8ac;--accent:#b8e08a;--line:#34443a}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f4f7f3;font:16px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main{max-width:680px;margin:auto;padding:22px 16px 48px}
+header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+h1{font-size:27px;margin:0;letter-spacing:-.6px}.sub{color:var(--muted);font-size:13px;margin-top:5px}
+.pill{border:1px solid var(--line);border-radius:30px;padding:7px 10px;color:var(--accent);font-size:12px}
+section{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:16px;margin:14px 0}
+h2{font-size:17px;margin:0 0 13px}
+label{display:block;color:var(--muted);font-size:13px;margin:12px 0 6px}
+select,input,button{width:100%;border-radius:12px;border:1px solid var(--line);padding:13px;background:#111b15;color:#fff;font:inherit}
+button{background:var(--accent);color:#172014;border:0;font-weight:700;margin-top:10px}
+button.secondary{background:#29382e;color:#f4f7f3;border:1px solid var(--line)}
+button:disabled{opacity:.45}
+video{width:100%;background:#080c09;border-radius:12px;max-height:360px;object-fit:cover}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.stat{background:#111b15;border-radius:12px;padding:12px}.num{font-size:24px;font-weight:750}.caption{font-size:12px;color:var(--muted);margin-top:3px}
+ul{list-style:none;padding:0;margin:0}li{border-top:1px solid var(--line);padding:11px 0;display:flex;justify-content:space-between;gap:10px;font-size:14px}
+.small{color:var(--muted);font-size:12px;line-height:1.45}.notice{color:var(--muted);font-size:13px;line-height:1.45}
+</style>
+</head>
+<body>
+<main>
+<header><div><h1>⛳ Swing Tracker</h1><div class="sub">Your personal golf practice log</div></div><div class="pill">BETA · FREE</div></header>
+
+<section>
+<h2>1. Record a swing</h2>
+<label for="club">Club</label>
+<select id="club">
+<option>Driver</option><option>3-wood</option><option>25-degree wood</option>
+<option>6 iron</option><option>7 iron</option><option>8 iron</option>
+<option>9 iron</option><option>Pitching wedge</option><option>Putter</option>
+</select>
+<video id="preview" playsinline muted autoplay></video>
+<div class="row">
+<button id="start">Start camera</button>
+<button id="stop" class="secondary" disabled>Stop camera</button>
+</div>
+<div class="row">
+<button id="record" disabled>Record swing</button>
+<button id="stopRecord" class="secondary" disabled>Stop recording</button>
+</div>
+<p id="cameraStatus" class="small">Allow camera access when Safari asks. Set your phone safely to the side or behind you.</p>
+<video id="playback" playsinline controls hidden></video>
+<a id="download" hidden style="display:block;color:var(--accent);margin-top:10px">Save recorded video</a>
+</section>
+
+<section>
+<h2>2. Log your shot</h2>
+<label for="yards">Estimated distance (yards)</label>
+<input id="yards" type="number" inputmode="decimal" min="0" max="500" placeholder="e.g. 145">
+<label for="kind">Distance type</label>
+<select id="kind"><option>Carry estimate</option><option>Total distance estimate</option></select>
+<label for="result">How did it go?</label>
+<select id="result"><option>Solid / comfortable</option><option>Short</option><option>Long</option><option>Left</option><option>Right</option><option>Mishit</option></select>
+<button id="save">Save shot</button>
+<p class="small">For now, enter the distance you estimate from range markers. Camera video does not reliably measure ball distance by itself.</p>
+</section>
+
+<section>
+<h2>3. Your club averages</h2>
+<div class="stats">
+<div class="stat"><div class="num" id="shotCount">0</div><div class="caption">Shots logged</div></div>
+<div class="stat"><div class="num" id="clubCount">0</div><div class="caption">Clubs tested</div></div>
+</div>
+<div id="averages" class="small" style="margin-top:14px">Your averages will appear here.</div>
+</section>
+
+<section>
+<div class="row" style="align-items:center"><h2 style="margin:0">Recent shots</h2><button id="clear" class="secondary" style="margin:0;padding:9px">Clear log</button></div>
+<ul id="history" style="margin-top:10px"></ul>
+</section>
+<p class="notice">Your shot log is saved in this browser on this iPhone. It is not uploaded to a server. Keep your phone stable and out of the swing path. This first version records video and tracks manually entered distances; it does not yet calculate swing mechanics or ball flight automatically.</p>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+let stream=null, recorder=null, chunks=[], shots=JSON.parse(localStorage.getItem('swingShots')||'[]');
+function render(){
+ $('shotCount').textContent=shots.length;
+ $('clubCount').textContent=new Set(shots.map(s=>s.club)).size;
+ const groups={}; shots.filter(s=>Number.isFinite(s.yards)).forEach(s=>{(groups[s.club]??=[]).push(s.yards)});
+ const entries=Object.entries(groups);
+ $('averages').innerHTML=entries.length?entries.map(([c,a])=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #34443a"><span>${c}</span><strong>${Math.round(a.reduce((x,y)=>x+y,0)/a.length)} yd avg · ${a.length} shots</strong></div>`).join(''):'Your averages will appear here.';
+ $('history').innerHTML=shots.slice(-12).reverse().map(s=>`<li><span><strong>${s.club}</strong><br><span class="small">${s.result} · ${s.kind}</span></span><strong>${s.yards} yd</strong></li>`).join('')||'<li class="small">No shots logged yet.</li>';
+}
+$('start').onclick=async()=>{
+ try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false});$('preview').srcObject=stream;$('record').disabled=false;$('cameraStatus').textContent='Camera is on. Frame your full body and club, then record.';}
+ catch(e){$('cameraStatus').textContent='Could not open camera: '+e.message+'. Check Safari camera permissions and make sure the page is hosted over HTTPS.';}
+};
+$('stop').onclick=()=>{if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;$('preview').srcObject=null;$('record').disabled=true;$('stopRecord').disabled=true;$('cameraStatus').textContent='Camera stopped.'};
+$('record').onclick=()=>{
+ if(!stream)return;
+ const mime=['video/mp4;codecs=h264','video/mp4','video/webm;codecs=vp9','video/webm'].find(t=>MediaRecorder.isTypeSupported(t));
+ try{recorder=new MediaRecorder(stream,mime?{mimeType:mime}:undefined);chunks=[];recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};recorder.onstop=()=>{const blob=new Blob(chunks,{type:recorder.mimeType||'video/mp4'});const url=URL.createObjectURL(blob);$('playback').src=url;$('playback').hidden=false;$('download').href=url;$('download').download='golf-swing.'+(blob.type.includes('mp4')?'mp4':'webm');$('download').hidden=false;$('cameraStatus').textContent='Swing recorded. Replay it below or save the video.'};recorder.start();$('record').disabled=true;$('stopRecord').disabled=false;$('cameraStatus').textContent='Recording…';}
+ catch(e){$('cameraStatus').textContent='Recording is not supported in this browser version: '+e.message}
+};
+$('stopRecord').onclick=()=>{if(recorder&&recorder.state!=='inactive')recorder.stop();$('record').disabled=false;$('stopRecord').disabled=true};
+$('save').onclick=()=>{const y=Number($('yards').value);if(!Number.isFinite(y)||y<=0||y>500){alert('Enter a distance between 1 and 500 yards.');return;}shots.push({club:$('club').value,yards:y,kind:$('kind').value,result:$('result').value,date:new Date().toISOString()});localStorage.setItem('swingShots',JSON.stringify(shots));$('yards').value='';render()};
+$('clear').onclick=()=>{if(confirm('Delete all saved shot entries on this iPhone?')){shots=[];localStorage.removeItem('swingShots');render()}};
+render();
+</script>
+</body>
+</html>
